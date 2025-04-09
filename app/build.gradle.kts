@@ -55,6 +55,7 @@ dependencies {
 
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.navigation.compose)
 
     // Coil
     implementation(libs.coil.compose)
@@ -62,6 +63,7 @@ dependencies {
     // Dagger - Hilt
     implementation(libs.dagger.hilt)
     ksp(libs.dagger.hilt.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
 
     // Paging
     implementation(libs.androidx.paging.runtime)
