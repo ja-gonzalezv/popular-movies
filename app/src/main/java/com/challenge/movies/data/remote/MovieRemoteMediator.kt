@@ -9,6 +9,7 @@ import androidx.room.withTransaction
 import com.challenge.movies.data.local.genre.GenreEntity
 import com.challenge.movies.data.local.MovieDatabase
 import com.challenge.movies.data.local.movie.MovieEntity
+import com.challenge.movies.data.local.movie.MovieRemoteKeysEntity
 import com.challenge.movies.data.mappers.toGenreEntity
 import com.challenge.movies.data.mappers.toMovieEntity
 import com.challenge.movies.data.remote.movie.MovieDto
@@ -21,6 +22,10 @@ class MovieRemoteMediator(
     private val movieApi: MovieApi,
 ) : RemoteMediator<Int, MovieEntity>() {
 
+    private val movieDao = movieDatabase.movieDao
+    private val movieRemoteKeysDao = movieDatabase.movieRemoteKeysDao
+    private val genreDao = movieDatabase.genreDao
+
     override suspend fun load(
         loadType: LoadType,
         state: PagingState<Int, MovieEntity>
@@ -28,47 +33,73 @@ class MovieRemoteMediator(
         return try {
             val currentPage = when (loadType) {
                 LoadType.REFRESH -> {
-                    // Start from the first page
-                    1
+                    state.getRemoteKeyClosestToCurrentPosition()?.nextPage?.minus(1) ?: 1
                 }
 
                 LoadType.PREPEND -> {
-                    // We don't need to load more pages when prepending
-                    return MediatorResult.Success(endOfPaginationReached = true)
+                    val remoteKeys = state.getRemoteKeyForFirstItem()
+                    remoteKeys?.prevPage
+                        ?: return MediatorResult.Success(endOfPaginationReached = remoteKeys != null)
                 }
 
                 LoadType.APPEND -> {
-                    state.anchorPosition?.let { anchorPosition ->
-                        (anchorPosition / state.config.pageSize) + 1
-                    } ?: 1
+                    val remoteKeys = state.getRemoteKeyForLastItem()
+                    remoteKeys?.nextPage
+                        ?: return MediatorResult.Success(endOfPaginationReached = remoteKeys != null)
                 }
             }
 
             val moviesResponse = movieApi.getMovies(page = currentPage)
-            val genreEntities = getGenres() ?: movieDatabase.genreDao.getAll()
+            val genreEntities = getGenres() ?: genreDao.getAll()
+
+            val endOfPaginationReached = moviesResponse.results.isEmpty()
+            val prevPage = if (currentPage == 1) null else currentPage - 1
+            val nextPage = if (endOfPaginationReached) null else currentPage + 1
 
             // Usage of withTransaction is beneficial in this case, since we only want to execute all transactions if all of them succeed
             movieDatabase.withTransaction {
                 if (loadType == LoadType.REFRESH) {
-                    movieDatabase.movieDao.clearAll()
+                    movieDao.clearAll()
+                    movieRemoteKeysDao.clearAll()
                 }
-                movieDatabase.genreDao.clearAll()
+                genreDao.clearAll()
 
-                val movieEntities =
-                    moviesResponse.results.map { it.toMovieEntity(genreEntities.filterGenresBy(it)) }
+                val (movieEntities, movieRemoteKeysEntities) =
+                    moviesResponse.results.map {
+                        it.toMovieEntity(genreEntities.filterGenresBy(it)) to MovieRemoteKeysEntity(
+                            id = it.id,
+                            prevPage = prevPage,
+                            nextPage = nextPage
+                        )
+                    }.unzip()
 
-                movieDatabase.movieDao.upsertAll(movieEntities)
-                movieDatabase.genreDao.upsertAll(genreEntities)
+                movieDao.upsertAll(movieEntities)
+                movieRemoteKeysDao.insertAll(movieRemoteKeysEntities)
+                genreDao.upsertAll(genreEntities)
             }
 
-            MediatorResult.Success(
-                endOfPaginationReached = moviesResponse.results.isEmpty()
-            )
+            MediatorResult.Success(endOfPaginationReached = endOfPaginationReached)
         } catch (e: IOException) {
             MediatorResult.Error(e)
         } catch (e: HttpException) {
             MediatorResult.Error(e)
         }
+    }
+
+    private suspend fun PagingState<Int, MovieEntity>.getRemoteKeyClosestToCurrentPosition(): MovieRemoteKeysEntity? {
+        return anchorPosition?.let { position ->
+            closestItemToPosition(position)?.movieId?.let { id ->
+                movieRemoteKeysDao.getRemoteKeys(id = id)
+            }
+        }
+    }
+
+    private suspend fun PagingState<Int, MovieEntity>.getRemoteKeyForFirstItem(): MovieRemoteKeysEntity? {
+        return firstItemOrNull()?.movieId?.let { id -> movieRemoteKeysDao.getRemoteKeys(id = id) }
+    }
+
+    private suspend fun PagingState<Int, MovieEntity>.getRemoteKeyForLastItem(): MovieRemoteKeysEntity? {
+        return lastItemOrNull()?.movieId?.let { id -> movieRemoteKeysDao.getRemoteKeys(id = id) }
     }
 
     private suspend fun getGenres(): List<GenreEntity>? {
