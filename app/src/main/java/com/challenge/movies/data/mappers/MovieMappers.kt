@@ -7,7 +7,7 @@ import com.challenge.movies.domain.Movie
 
 fun MovieDto.toMovieEntity(genres: List<String>): MovieEntity {
     return MovieEntity(
-        id = id,
+        movieId = id,
         name = title,
         posterUrl = posterPath?.let { MovieApi.MEDIUM_SIZE_IMAGE_URL + it },
         backdropUrl = backdropPath?.let { MovieApi.LARGE_SIZE_IMAGE_URL + it },
@@ -20,7 +20,7 @@ fun MovieDto.toMovieEntity(genres: List<String>): MovieEntity {
 
 fun MovieEntity.toMovie(): Movie {
     return Movie(
-        id = id,
+        id = movieId,
         name = name,
         posterUrl = posterUrl,
         backdropUrl = backdropUrl,
