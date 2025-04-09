@@ -8,6 +8,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.paging.compose.collectAsLazyPagingItems
+import com.challenge.movies.presentation.details.MovieDetailsScreen
+import com.challenge.movies.presentation.details.MovieDetailsViewModel
 import com.challenge.movies.presentation.movie.MoviesScreen
 import com.challenge.movies.presentation.movie.MoviesScreenUiSideEffect
 import com.challenge.movies.presentation.movie.MoviesViewModel
@@ -32,7 +34,10 @@ fun SetupNavGraph(navController: NavHostController) {
         }
 
         composable<MovieDetails> {
+            val viewModel = hiltViewModel<MovieDetailsViewModel>()
+            val state by viewModel.state.collectAsStateWithLifecycle()
 
+            MovieDetailsScreen(uiState = state, onBack = { navController.popBackStack() })
         }
     }
 }
