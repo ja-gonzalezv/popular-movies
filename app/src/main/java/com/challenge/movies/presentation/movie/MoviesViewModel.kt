@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -47,7 +48,14 @@ class MoviesViewModel @Inject constructor(
                     }
 
                     is LoadState.Error -> {
-                        _state.update { it.copy(error = (event.loadState.refresh as LoadState.Error).error.message) }
+                        viewModelScope.launch {
+                            _sideEffect.send(
+                                MoviesScreenUiSideEffect.ShowError(
+                                    (event.loadState.refresh as LoadState.Error).error.message ?: "Unknown error"
+                                )
+                            )
+                        }
+                        _state.update { it.copy(initialLoading = false) }
                     }
                 }
             }
